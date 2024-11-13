@@ -56,20 +56,21 @@ class gwnet(nn.Module):
         self.dropout = dropout
         self.blocks = blocks
         self.layers = layers
-        self.gcn_bool = gcn_bool
+        self.gcn_bool = gcn_bool  # 是否开启图卷积
         self.addaptadj = addaptadj
 
-        self.filter_convs = nn.ModuleList()
-        self.gate_convs = nn.ModuleList()
-        self.residual_convs = nn.ModuleList()
-        self.skip_convs = nn.ModuleList()
-        self.bn = nn.ModuleList()
+        # ModuleList: 专门用于保存一组神经网络层的容器
+        self.filter_convs = nn.ModuleList()  # 过滤器卷积层
+        self.gate_convs = nn.ModuleList()  # 门控卷积层
+        self.residual_convs = nn.ModuleList()  # 残差卷积层
+        self.skip_convs = nn.ModuleList()  # 跳跃连接的卷积层
+        self.bn = nn.ModuleList()  # 批归一化层
         self.gconv = nn.ModuleList()
 
         self.start_conv = nn.Conv2d(in_channels=in_dim,
                                     out_channels=residual_channels,
                                     kernel_size=(1, 1))
-        self.supports = supports
+        self.supports = supports  # 存放邻接矩阵的列表
 
         receptive_field = 1
 
@@ -77,7 +78,7 @@ class gwnet(nn.Module):
         if supports is not None:
             self.supports_len += len(supports)
 
-        if gcn_bool and addaptadj:
+        if gcn_bool and addaptadj:  # 判断是否使用自适应矩阵
             if aptinit is None:
                 if supports is None:
                     self.supports = []
@@ -87,7 +88,7 @@ class gwnet(nn.Module):
             else:
                 if supports is None:
                     self.supports = []
-                m, p, n = torch.svd(aptinit)
+                m, p, n = torch.svd(aptinit)  # 奇异值分解(m:左奇异矩阵,p:奇异值向量,n:右奇异矩阵的转置)
                 initemb1 = torch.mm(m[:, :10], torch.diag(p[:10] ** 0.5))
                 initemb2 = torch.mm(torch.diag(p[:10] ** 0.5), n[:, :10].t())
                 self.nodevec1 = nn.Parameter(initemb1, requires_grad=True).to(device)
@@ -143,12 +144,12 @@ class gwnet(nn.Module):
         else:
             x = input
         x = self.start_conv(x)  # 一个 1x1 卷积层，将输入特征变换到 residual_channels 大小
-        skip = 0
+        skip = 0  # 用于存储每层的跳跃连接（skip connections）结果
 
         # calculate the current adaptive adj matrix once per iteration
-        new_supports = None
+        new_supports = None  # 存放新邻接矩阵（自适应矩阵）的列表
         if self.gcn_bool and self.addaptadj and self.supports is not None:
-            adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)
+            adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)  # 计算自适应矩阵
             new_supports = self.supports + [adp]
 
         # WaveNet layers
@@ -166,35 +167,35 @@ class gwnet(nn.Module):
             # (dilation, init_dilation) = self.dilations[i]
 
             # residual = dilation_func(x, dilation, init_dilation, i)
-            residual = x
+            residual = x  # 保存输入，实现残差连接
+
             # dilated convolution
             filter = self.filter_convs[i](residual)
             filter = torch.tanh(filter)
             gate = self.gate_convs[i](residual)
             gate = torch.sigmoid(gate)
-            x = filter * gate
+            x = filter * gate  # 扩展卷积的输出
 
             # parametrized skip connection
-
             s = x
             s = self.skip_convs[i](s)
             try:
-                skip = skip[:, :, :, -s.size(3):]
+                skip = skip[:, :, :, -s.size(3):]  # 确保尺寸对齐
             except:
                 skip = 0
             skip = s + skip
 
             if self.gcn_bool and self.supports is not None:
                 if self.addaptadj:
-                    x = self.gconv[i](x, new_supports)
+                    x = self.gconv[i](x, new_supports)  # 带自适应矩阵的图卷积
                 else:
-                    x = self.gconv[i](x, self.supports)
+                    x = self.gconv[i](x, self.supports)  # 普通图卷积
             else:
-                x = self.residual_convs[i](x)
+                x = self.residual_convs[i](x)  # 常规卷积
 
-            x = x + residual[:, :, :, -x.size(3):]
+            x = x + residual[:, :, :, -x.size(3):]  # 残差连接
 
-            x = self.bn[i](x)
+            x = self.bn[i](x)  # 批归一化，保持特征稳定
 
         x = F.relu(skip)
         x = F.relu(self.end_conv_1(x))
