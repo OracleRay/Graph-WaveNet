@@ -34,6 +34,7 @@ class gcn(nn.Module):
 
     def forward(self, x, support):
         out = [x]  # 第 0 阶的卷积结果
+        # 扩散卷积
         for a in support:
             x1 = self.nconv(x, a)
             out.append(x1)
@@ -171,9 +172,9 @@ class gwnet(nn.Module):
 
             # dilated convolution
             filter = self.filter_convs[i](residual)
-            filter = torch.tanh(filter)
+            filter = torch.tanh(filter)  # 生成一个候选信息
             gate = self.gate_convs[i](residual)
-            gate = torch.sigmoid(gate)
+            gate = torch.sigmoid(gate)  # 生成“门控信号”,控制候选信息在当前层中保留的比例
             x = filter * gate  # 扩展卷积的输出
 
             # parametrized skip connection
