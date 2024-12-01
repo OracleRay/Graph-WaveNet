@@ -80,13 +80,13 @@ class gwnet(nn.Module):
             self.supports_len += len(supports)
 
         if gcn_bool and addaptadj:  # 判断是否使用自适应矩阵
-            if aptinit is None:
+            if aptinit is None:  # 如果没有给出邻接矩阵的初始值，则随机生成两个节点矩阵
                 if supports is None:
                     self.supports = []
                 self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)
                 self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)
                 self.supports_len += 1
-            else:
+            else:  # 如果给出邻接矩阵初始值，则奇异值分解得出两个节点矩阵
                 if supports is None:
                     self.supports = []
                 m, p, n = torch.svd(aptinit)  # 奇异值分解(m:左奇异矩阵,p:奇异值向量,n:右奇异矩阵的转置)
